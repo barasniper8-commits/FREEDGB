@@ -1,9 +1,32 @@
-name: Build Android APK
+name: Build APK from Custom HTML
 
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Nama Aplikasi'
+        required: true
+        default: 'MyTradingApp'
+      package_name:
+        description: 'Package Name (cth: com.arianto.app)'
+        required: true
+        default: 'com.arianto.app'
+      custom_html:
+        description: 'Tulis / Paste Kode HTML di sini'
+        required: true
+        type: multiline
+        default: |
+          <!DOCTYPE html>
+          <html lang="id">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>App</title>
+          </head>
+          <body>
+              <h1>Halo dari GitHub Actions!</h1>
+          </body>
+          </html>
 
 jobs:
   build:
@@ -19,25 +42,33 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    # Jika proyek Anda menggunakan Gradle / Android Project
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-      continue-on-error: true
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
 
-    - name: Build APK with Gradle
+    - name: Install Cordova CLI
       run: |
-        if [ -f "gradlew" ]; then
-          ./gradlew assembleDebug
-        else
-          echo "No gradlew found, skipping standard gradle build."
-        fi
-      continue-on-error: true
+        npm install -g cordova
 
-    # Upload hasil APK agar bisa di-download dari menu Actions
+    - name: Create Cordova Project & Inject HTML
+      run: |
+        cordova create my-app com.example.app ${{ github.event.inputs.app_name }}
+        cd my-app
+        
+        # Menulis isi input custom_html dari workflow_dispatch langsung ke index.html
+        echo "${{ github.event.inputs.custom_html }}" > www/index.html
+        
+        # Tambahkan platform Android
+        cordova platform add android
+
+    - name: Build Debug APK
+      run: |
+        cd my-app
+        cordova build android --debug
+
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug-apk
-        path: |
-          app/build/outputs/apk/debug/*.apk
-          **/*.apk
+        name: ${{ github.event.inputs.app_name }}-debug
+        path: my-app/platforms/android/app/build/outputs/apk/debug/app-debug.apk

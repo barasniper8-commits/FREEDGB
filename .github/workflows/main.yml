@@ -8,25 +8,13 @@ on:
         required: true
         default: 'MyTradingApp'
       package_name:
-        description: 'Package Name (cth: com.arianto.app)'
+        description: 'Package Name'
         required: true
         default: 'com.arianto.app'
       custom_html:
-        description: 'Tulis / Paste Kode HTML di sini'
+        description: 'Kode HTML'
         required: true
         type: multiline
-        default: |
-          <!DOCTYPE html>
-          <html lang="id">
-          <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>App</title>
-          </head>
-          <body>
-              <h1>Halo dari GitHub Actions!</h1>
-          </body>
-          </html>
 
 jobs:
   build:
@@ -53,21 +41,15 @@ jobs:
 
     - name: Create Project, Inject HTML & Build APK
       run: |
-        # 1. Buat proyek Cordova
         cordova create my-app ${{ github.event.inputs.package_name }} ${{ github.event.inputs.app_name }}
         cd my-app
 
-        # 2. Masukkan kode HTML menggunakan Node.js agar aman dari karakter khusus & bash escaping
         node -e '
           const fs = require("fs");
-          const htmlContent = process.env.CUSTOM_HTML_INPUT;
-          fs.writeFileSync("www/index.html", htmlContent);
+          fs.writeFileSync("www/index.html", process.env.CUSTOM_HTML_INPUT);
         '
 
-        # 3. Tambahkan platform Android
         cordova platform add android
-
-        # 4. Build Debug APK
         cordova build android --debug
 
       env:

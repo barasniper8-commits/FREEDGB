@@ -51,20 +51,27 @@ jobs:
       run: |
         npm install -g cordova
 
-    - name: Create Cordova Project & Inject HTML Safely
+    - name: Create Project, Inject HTML & Build APK
       run: |
-        cordova create my-app com.example.app ${{ github.event.inputs.app_name }}
+        # 1. Buat proyek Cordova
+        cordova create my-app ${{ github.event.inputs.package_name }} ${{ github.event.inputs.app_name }}
         cd my-app
-        
-        # Menggunakan base64 decode agar karakter khusus, kutip, & enter di HTML aman dari error bash
-        echo "${{ github.event.inputs.custom_html }}" | base64 -d > www/index.html || echo "${{ github.event.inputs.custom_html }}" > www/index.html
-        
-        # Tambahkan platform Android
+
+        # 2. Masukkan kode HTML menggunakan Node.js agar aman dari karakter khusus & bash escaping
+        node -e '
+          const fs = require("fs");
+          const htmlContent = process.env.CUSTOM_HTML_INPUT;
+          fs.writeFileSync("www/index.html", htmlContent);
+        '
+
+        # 3. Tambahkan platform Android
         cordova platform add android
 
-    - name: Build Debug APK
-      run: |
-        my-app/platforms/android/gradlew -p my-app/platforms/android assembleDebug
+        # 4. Build Debug APK
+        cordova build android --debug
+
+      env:
+        CUSTOM_HTML_INPUT: ${{ github.event.inputs.custom_html }}
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4

@@ -1,62 +1,41 @@
-name: Build APK from Custom HTML
-
-on:
-  workflow_dispatch:
-    inputs:
-      app_name:
-        description: 'Nama Aplikasi'
-        required: true
-        default: 'MyTradingApp'
-      package_name:
-        description: 'Package Name'
-        required: true
-        default: 'com.arianto.app'
-      custom_html:
-        description: 'Kode HTML'
-        required: true
-        type: multiline
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-
-    - name: Install Cordova CLI
-      run: |
-        npm install -g cordova
-
-    - name: Create Project, Inject HTML & Build APK
-      run: |
-        cordova create my-app ${{ github.event.inputs.package_name }} ${{ github.event.inputs.app_name }}
-        cd my-app
-
-        node -e '
-          const fs = require("fs");
-          fs.writeFileSync("www/index.html", process.env.CUSTOM_HTML_INPUT);
-        '
-
-        cordova platform add android
-        cordova build android --debug
-
-      env:
-        CUSTOM_HTML_INPUT: ${{ github.event.inputs.custom_html }}
-
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ github.event.inputs.app_name }}-debug
-        path: my-app/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+name: Windows RDP Arianto Lumajang
+​on:
+workflow_dispatch:
+inputs:
+tailscale_key:
+description: 'Tailscale Auth Key'
+required: true
+type: string
+​jobs:
+windows-rdp:
+runs-on: windows-latest
+steps:
+- name: Info Pemilik VPS (Arianto Lumajang)
+run: |
+Write-Host ""
+Write-Host "  VPS RDP MILIK: Arianto Lumajang"
+Write-Host "  LOKASI: Lumajang, Indonesia"
+Write-Host ""
+Write-Host "=== SPESIFIKASI MESIN (RAM 16GB) ==="
+Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory
+Get-CimInstance Win32_Processor | Select-Object Name
+​- name: Install & Setup Tailscale via Winget
+run: |
+Write-Host "Menginstal Tailscale menggunakan Winget..."
+winget install --id Tailscale.Tailscale -e --accept-source-agreements --accept-package-agreements
+​Write-Host "Menghubungkan ke Tailscale..."
+& "C:\Program Files\Tailscale\tailscale.exe" up --authkey="${{ github.event.inputs.tailscale_key }}" --accept-routes
+​- name: Konfigurasi RDP & Password
+run: |
+net user runneradmin "AriantoLumajang123!@"
+Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
+​- name: Tampilkan IP Tailscale
+run: |
+Write-Host "=== GUNAKAN IP DI BAWAH INI UNTUK LOGIN RDP (Arianto Lumajang) ==="
+& "C:\Program Files\Tailscale\tailscale.exe" ip -4
+​- name: Keep Alive (Sesi Aktif 6 Jam)
+run: |
+Write-Host "RDP Arianto Lumajang Siap Digunakan. Cek log 'Tampilkan IP Tailscale' untuk melihat IP."
+while ($true) { Start-Sleep -Seconds 300 }

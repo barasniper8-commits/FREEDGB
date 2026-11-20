@@ -1,41 +1,91 @@
-name: Windows RDP Arianto Lumajang
-​on:
-workflow_dispatch:
-inputs:
-tailscale_key:
-description: 'Tailscale Auth Key'
-required: true
-type: string
-​jobs:
-windows-rdp:
-runs-on: windows-latest
-steps:
-- name: Info Pemilik VPS (Arianto Lumajang)
-run: |
-Write-Host ""
-Write-Host "  VPS RDP MILIK: Arianto Lumajang"
-Write-Host "  LOKASI: Lumajang, Indonesia"
-Write-Host ""
-Write-Host "=== SPESIFIKASI MESIN (RAM 16GB) ==="
-Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory
-Get-CimInstance Win32_Processor | Select-Object Name
-​- name: Install & Setup Tailscale via Winget
-run: |
-Write-Host "Menginstal Tailscale menggunakan Winget..."
-winget install --id Tailscale.Tailscale -e --accept-source-agreements --accept-package-agreements
-​Write-Host "Menghubungkan ke Tailscale..."
-& "C:\Program Files\Tailscale\tailscale.exe" up --authkey="${{ github.event.inputs.tailscale_key }}" --accept-routes
-​- name: Konfigurasi RDP & Password
-run: |
-net user runneradmin "AriantoLumajang123!@"
-Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
-Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
-​- name: Tampilkan IP Tailscale
-run: |
-Write-Host "=== GUNAKAN IP DI BAWAH INI UNTUK LOGIN RDP (Arianto Lumajang) ==="
-& "C:\Program Files\Tailscale\tailscale.exe" ip -4
-​- name: Keep Alive (Sesi Aktif 6 Jam)
-run: |
-Write-Host "RDP Arianto Lumajang Siap Digunakan. Cek log 'Tampilkan IP Tailscale' untuk melihat IP."
-while ($true) { Start-Sleep -Seconds 300 }
+name: Ephemeral Desktop VPS with Tailscale & Steam
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_minutes:
+        description: 'Durasi sesi aktif (menit, maks 330)'
+        required: false
+        default: '60'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-vps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Install XFCE Desktop & XRDP
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            xfce4 xfce4-goodies xrdp dbus-x11 wget curl ca-certificates gnupg software-properties-common
+          echo "startxfce4" > ~/.xsession
+          sudo systemctl enable xrdp || true
+          sudo service xrdp restart || true
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo systemctl enable tailscaled || true
+          sudo service tailscaled start || true
+
+      - name: Connect to Tailscale
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+          TS_HOSTNAME: ${{ secrets.TS_HOSTNAME }}
+        run: |
+          if [ -z "$TS_AUTHKEY" ]; then
+            echo "ERROR: Secret TS_AUTHKEY belum diatur di Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          HOSTNAME_ARG="${TS_HOSTNAME:-gh-desktop-vps}"
+          sudo tailscale up --authkey="$TS_AUTHKEY" --hostname="$HOSTNAME_ARG" --ssh
+          tailscale status
+          tailscale ip -4
+
+      - name: Download Steam & Place Shortcut on Desktop
+        run: |
+          mkdir -p ~/Desktop ~/Downloads
+          STEAM_DEB="$HOME/Downloads/steam_latest.deb"
+          wget -q --show-progress -O "$STEAM_DEB" "https://cdn.cloudflare.steamstatic.com/client/installer/steam.deb"
+
+          # Ekstrak / siapkan ikon & desktop entry di layer depan Desktop
+          cat << 'EOF' > ~/Desktop/Steam.desktop
+          [Desktop Entry]
+          Version=1.0
+          Name=Steam
+          Comment=Application for browsing and playing games on Steam
+          Exec=/usr/games/steam %U
+          Icon=steam
+          Terminal=false
+          Type=Application
+          Categories=Game;Network;
+          StartupNotify=true
+          EOF
+
+          chmod +x ~/Desktop/Steam.desktop
+
+          # Opsional: install paket steam.deb jika dependensi tersedia
+          sudo dpkg --add-architecture i386 || true
+          sudo apt-get update || true
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -f -y "$STEAM_DEB" || true
+
+          ls -la ~/Desktop
+
+      - name: Keep Session Alive
+        env:
+          SESSION_MINUTES: ${{ github.event.inputs.session_minutes }}
+        run: |
+          MINUTES="${SESSION_MINUTES:-60}"
+          if ! [[ "$MINUTES" =~ ^[0-9]+$ ]]; then
+            MINUTES=60
+          fi
+          if [ "$MINUTES" -gt 330 ]; then
+            MINUTES=330
+          fi
+          echo "VPS aktif selama $MINUTES menit. Cek IP Tailscale di log langkah 'Connect to Tailscale'."
+          sleep "$((MINUTES * 60))"

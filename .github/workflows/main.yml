@@ -1,10 +1,19 @@
-name: Ephemeral Desktop VPS with Tailscale & Steam
+name: Desktop VPS with Tailscale Input & Steam
 
 on:
   workflow_dispatch:
     inputs:
+      tailscale_authkey:
+        description: 'Masukkan Tailscale Auth Key (tskey-auth-...)'
+        required: true
+        type: string
+      tailscale_hostname:
+        description: 'Nama host Tailscale (opsional)'
+        required: false
+        default: 'gh-desktop-vps'
+        type: string
       session_minutes:
-        description: 'Durasi sesi aktif (menit, maks 330)'
+        description: 'Durasi sesi aktif dalam menit (maks 330)'
         required: false
         default: '60'
         type: string
@@ -33,17 +42,21 @@ jobs:
           sudo systemctl enable tailscaled || true
           sudo service tailscaled start || true
 
-      - name: Connect to Tailscale
-        env:
-          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
-          TS_HOSTNAME: ${{ secrets.TS_HOSTNAME }}
+      - name: Connect to Tailscale from Input
         run: |
-          if [ -z "$TS_AUTHKEY" ]; then
-            echo "ERROR: Secret TS_AUTHKEY belum diatur di Settings > Secrets and variables > Actions."
+          AUTHKEY="${{ inputs.tailscale_authkey }}"
+          HOSTNAME_ARG="${{ inputs.tailscale_hostname }}"
+
+          if [ -z "$AUTHKEY" ]; then
+            echo "ERROR: tailscale_authkey wajib diisi saat Run workflow."
             exit 1
           fi
-          HOSTNAME_ARG="${TS_HOSTNAME:-gh-desktop-vps}"
-          sudo tailscale up --authkey="$TS_AUTHKEY" --hostname="$HOSTNAME_ARG" --ssh
+
+          if [ -z "$HOSTNAME_ARG" ]; then
+            HOSTNAME_ARG="gh-desktop-vps"
+          fi
+
+          sudo tailscale up --authkey="$AUTHKEY" --hostname="$HOSTNAME_ARG" --ssh
           tailscale status
           tailscale ip -4
 
@@ -53,7 +66,6 @@ jobs:
           STEAM_DEB="$HOME/Downloads/steam_latest.deb"
           wget -q --show-progress -O "$STEAM_DEB" "https://cdn.cloudflare.steamstatic.com/client/installer/steam.deb"
 
-          # Ekstrak / siapkan ikon & desktop entry di layer depan Desktop
           cat << 'EOF' > ~/Desktop/Steam.desktop
           [Desktop Entry]
           Version=1.0
@@ -69,7 +81,6 @@ jobs:
 
           chmod +x ~/Desktop/Steam.desktop
 
-          # Opsional: install paket steam.deb jika dependensi tersedia
           sudo dpkg --add-architecture i386 || true
           sudo apt-get update || true
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -f -y "$STEAM_DEB" || true
@@ -77,15 +88,13 @@ jobs:
           ls -la ~/Desktop
 
       - name: Keep Session Alive
-        env:
-          SESSION_MINUTES: ${{ github.event.inputs.session_minutes }}
         run: |
-          MINUTES="${SESSION_MINUTES:-60}"
+          MINUTES="${{ inputs.session_minutes }}"
           if ! [[ "$MINUTES" =~ ^[0-9]+$ ]]; then
             MINUTES=60
           fi
           if [ "$MINUTES" -gt 330 ]; then
             MINUTES=330
           fi
-          echo "VPS aktif selama $MINUTES menit. Cek IP Tailscale di log langkah 'Connect to Tailscale'."
+          echo "VPS aktif selama $MINUTES menit. Cek IP Tailscale di log langkah 'Connect to Tailscale from Input'."
           sleep "$((MINUTES * 60))"

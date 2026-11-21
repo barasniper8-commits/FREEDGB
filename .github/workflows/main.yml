@@ -1,4 +1,4 @@
-name: Windows RDP (Serveo)
+name: Windows RDP (Playit.gg)
 
 on:
   workflow_dispatch:
@@ -22,19 +22,27 @@ jobs:
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           net user runneradmin "$env:RDP_PASS" /active:yes
 
-      - name: Start Serveo TCP Tunnel
+      - name: Install and Start Playit Agent
         shell: pwsh
+        env:
+          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
         run: |
-          $serveoLog = "C:\serveo.log"
-          $serveoErr = "C:\serveo-err.log"
-          $sshArgs = "-tt -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ServerAliveInterval=30 -R 0:localhost:3389 serveo.net"
+          $playitDir = "C:\playit"
+          New-Item -ItemType Directory -Path $playitDir -Force | Out-Null
 
-          Start-Process -FilePath "ssh.exe" -ArgumentList $sshArgs -RedirectStandardOutput $serveoLog -RedirectStandardError $serveoErr -WindowStyle Hidden
-          Start-Sleep -Seconds 7
+          # Unduh playit agent untuk Windows x86_64
+          Invoke-WebRequest -Uri "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64.exe" -OutFile "$playitDir\playit.exe"
 
-          Write-Host "=== SERVEO TUNNEL INFO ==="
-          if (Test-Path $serveoLog) { Get-Content $serveoLog }
-          if (Test-Path $serveoErr) { Get-Content $serveoErr }
+          if (-not [string]::IsNullOrWhiteSpace($env:PLAYIT_SECRET)) {
+            Start-Process -FilePath "$playitDir\playit.exe" -ArgumentList "--secret `"$env:PLAYIT_SECRET`"" -RedirectStandardOutput "$playitDir\playit.log" -RedirectStandardError "$playitDir\playit-err.log" -WindowStyle Hidden
+            Start-Sleep -Seconds 6
+            Write-Host "=== PLAYIT AGENT STARTED ==="
+            if (Test-Path "$playitDir\playit.log") { Get-Content "$playitDir\playit.log" -Tail 30 }
+            if (Test-Path "$playitDir\playit-err.log") { Get-Content "$playitDir\playit-err.log" -Tail 30 }
+          } else {
+            Write-Host "PLAYIT_SECRET belum diisi. Jalankan claim URL berikut di browser untuk mengklaim agent:"
+            & "$playitDir\playit.exe" --stdout
+          }
 
       - name: Keep Session Alive
         shell: pwsh

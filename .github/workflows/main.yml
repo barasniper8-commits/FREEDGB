@@ -1,50 +1,25 @@
-name: Windows RDP (Playit.gg)
+name: SagZ1T2qR
 
-on:
-  workflow_dispatch:
-    inputs:
-      rdp_password:
-        description: "Password untuk user runneradmin"
-        required: false
-        default: "P@ssw0rd!2026"
+on: workflow_dispatch
 
 jobs:
-  rdp-session:
+  build:
+
     runs-on: windows-latest
-    timeout-minutes: 360
+
     steps:
-      - name: Enable RDP and Set Password
-        shell: pwsh
-        env:
-          RDP_PASS: ${{ secrets.RDP_PASSWORD || inputs.rdp_password }}
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          net user runneradmin "$env:RDP_PASS" /active:yes
-
-      - name: Install and Start Playit Agent
-        shell: pwsh
-        env:
-          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
-        run: |
-          $playitDir = "C:\playit"
-          New-Item -ItemType Directory -Path $playitDir -Force | Out-Null
-
-          # Unduh playit agent untuk Windows x86_64
-          Invoke-WebRequest -Uri "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64.exe" -OutFile "$playitDir\playit.exe"
-
-          if (-not [string]::IsNullOrWhiteSpace($env:PLAYIT_SECRET)) {
-            Start-Process -FilePath "$playitDir\playit.exe" -ArgumentList "--secret `"$env:PLAYIT_SECRET`"" -RedirectStandardOutput "$playitDir\playit.log" -RedirectStandardError "$playitDir\playit-err.log" -WindowStyle Hidden
-            Start-Sleep -Seconds 6
-            Write-Host "=== PLAYIT AGENT STARTED ==="
-            if (Test-Path "$playitDir\playit.log") { Get-Content "$playitDir\playit.log" -Tail 30 }
-            if (Test-Path "$playitDir\playit-err.log") { Get-Content "$playitDir\playit-err.log" -Tail 30 }
-          } else {
-            Write-Host "PLAYIT_SECRET belum diisi. Jalankan claim URL berikut di browser untuk mengklaim agent:"
-            & "$playitDir\playit.exe" --stdout
-          }
-
-      - name: Keep Session Alive
-        shell: pwsh
-        run: |
-          Start-Sleep -Seconds 21000
+    - name: Download Ngrok
+      run: Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+    - name: Extract Ngrok Archive
+      run: Expand-Archive ngrok.zip
+    - name: Auth
+      run: .\ngrok\ngrok.exe authtoken 1vOmOdz8edOyUQ545kTPo4TvXLP_3iPReiKYwn46spWoWfNex
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+    - name: Enable TS
+      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
+    - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+    - run: Set-LocalUser -Name "SagZ1T2qR" -Password (ConvertTo-SecureString -AsPlainText "SagZ1T2qR" -Force)
+    - name: Create Tunnel
+      run: .\ngrok\ngrok.exe tcp 3389

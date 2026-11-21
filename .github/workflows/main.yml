@@ -1,4 +1,4 @@
-name: Windows RDP (Pinggy)
+name: Windows RDP (Serveo)
 
 on:
   workflow_dispatch:
@@ -22,35 +22,19 @@ jobs:
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           net user runneradmin "$env:RDP_PASS" /active:yes
 
-      - name: Start Pinggy TCP Tunnel
+      - name: Start Serveo TCP Tunnel
         shell: pwsh
         run: |
-          $pinggyDir = "C:\pinggy"
-          New-Item -ItemType Directory -Path $pinggyDir -Force | Out-Null
+          $serveoLog = "C:\serveo.log"
+          $serveoErr = "C:\serveo-err.log"
+          $sshArgs = "-tt -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ServerAliveInterval=30 -R 0:localhost:3389 serveo.net"
 
-          # Jalankan SSH ke Pinggy dengan pseudo-terminal (-tt) dan web debugger lokal di 4300
-          $psi = New-Object System.Diagnostics.ProcessStartInfo
-          $psi.FileName = "ssh.exe"
-          $psi.Arguments = "-tt -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ServerAliveInterval=30 -p 443 -R0:localhost:3389 -L4300:localhost:4300 tcp@free.pinggy.io"
-          $psi.RedirectStandardOutput = $true
-          $psi.RedirectStandardError = $true
-          $psi.RedirectStandardInput = $true
-          $psi.UseShellExecute = $false
-          $psi.CreateNoWindow = $true
+          Start-Process -FilePath "ssh.exe" -ArgumentList $sshArgs -RedirectStandardOutput $serveoLog -RedirectStandardError $serveoErr -WindowStyle Hidden
+          Start-Sleep -Seconds 7
 
-          $proc = [System.Diagnostics.Process]::Start($psi)
-          Start-Sleep -Seconds 8
-
-          Write-Host "=== PINGGY TUNNEL URL ==="
-          try {
-            $resp = Invoke-RestMethod -Uri "http://127.0.0.1:4300/urls" -TimeoutSec 5
-            $resp.urls | ForEach-Object { Write-Host "Alamat RDP: $_" }
-          } catch {
-            Write-Host "API 4300 belum merespons, membaca output mentah:"
-            if (-not $proc.StandardOutput.EndOfStream) {
-              Write-Host $proc.StandardOutput.ReadToEnd()
-            }
-          }
+          Write-Host "=== SERVEO TUNNEL INFO ==="
+          if (Test-Path $serveoLog) { Get-Content $serveoLog }
+          if (Test-Path $serveoErr) { Get-Content $serveoErr }
 
       - name: Keep Session Alive
         shell: pwsh

@@ -25,16 +25,32 @@ jobs:
       - name: Start Pinggy TCP Tunnel
         shell: pwsh
         run: |
-          $pinggyLog = "C:\pinggy.log"
-          $pinggyErr = "C:\pinggy-err.log"
-          $sshArgs = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 443 -R0:localhost:3389 tcp@free.pinggy.io"
+          $pinggyDir = "C:\pinggy"
+          New-Item -ItemType Directory -Path $pinggyDir -Force | Out-Null
 
-          Start-Process -FilePath "ssh.exe" -ArgumentList $sshArgs -RedirectStandardOutput $pinggyLog -RedirectStandardError $pinggyErr -WindowStyle Hidden
-          Start-Sleep -Seconds 7
+          # Jalankan SSH ke Pinggy dengan pseudo-terminal (-tt) dan web debugger lokal di 4300
+          $psi = New-Object System.Diagnostics.ProcessStartInfo
+          $psi.FileName = "ssh.exe"
+          $psi.Arguments = "-tt -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o ServerAliveInterval=30 -p 443 -R0:localhost:3389 -L4300:localhost:4300 tcp@free.pinggy.io"
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.RedirectStandardInput = $true
+          $psi.UseShellExecute = $false
+          $psi.CreateNoWindow = $true
 
-          Write-Host "=== PINGGY OUTPUT ==="
-          if (Test-Path $pinggyLog) { Get-Content $pinggyLog }
-          if (Test-Path $pinggyErr) { Get-Content $pinggyErr }
+          $proc = [System.Diagnostics.Process]::Start($psi)
+          Start-Sleep -Seconds 8
+
+          Write-Host "=== PINGGY TUNNEL URL ==="
+          try {
+            $resp = Invoke-RestMethod -Uri "http://127.0.0.1:4300/urls" -TimeoutSec 5
+            $resp.urls | ForEach-Object { Write-Host "Alamat RDP: $_" }
+          } catch {
+            Write-Host "API 4300 belum merespons, membaca output mentah:"
+            if (-not $proc.StandardOutput.EndOfStream) {
+              Write-Host $proc.StandardOutput.ReadToEnd()
+            }
+          }
 
       - name: Keep Session Alive
         shell: pwsh

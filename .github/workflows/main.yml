@@ -32,9 +32,22 @@ jobs:
           Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "$ngrokDir\ngrok.zip"
           Expand-Archive -Path "$ngrokDir\ngrok.zip" -DestinationPath $ngrokDir -Force
           & "$ngrokDir\ngrok.exe" config add-authtoken "$env:NGROK_TOKEN"
-          Start-Process -FilePath "$ngrokDir\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
-          Start-Sleep -Seconds 5
-          Write-Host "RDP siap. Cek endpoint TCP aktif di Dashboard Ngrok (Cloud Edge -> Endpoints)."
+          Start-Process -FilePath "$ngrokDir\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout" -RedirectStandardOutput "$ngrokDir\ngrok.log" -RedirectStandardError "$ngrokDir\ngrok-err.log" -WindowStyle Hidden
+          Start-Sleep -Seconds 6
+
+          Write-Host "=== NGROK LOG ==="
+          if (Test-Path "$ngrokDir\ngrok.log") { Get-Content "$ngrokDir\ngrok.log" -Tail 30 }
+
+          Write-Host "=== NGROK ERR LOG ==="
+          if (Test-Path "$ngrokDir\ngrok-err.log") { Get-Content "$ngrokDir\ngrok-err.log" -Tail 30 }
+
+          Write-Host "=== NGROK LOCAL API TUNNELS ==="
+          try {
+            $tunnels = Invoke-RestMethod -Uri "http://127.0.0.1:4040/api/tunnels" -TimeoutSec 5
+            $tunnels.tunnels | ForEach-Object { Write-Host "Public URL: $($_.public_url) -> $($_.config.addr)" }
+          } catch {
+            Write-Host "Gagal membaca API lokal Ngrok: $($_.Exception.Message)"
+          }
 
       - name: Keep Session Alive
         shell: pwsh

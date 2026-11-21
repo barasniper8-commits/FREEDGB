@@ -1,100 +1,41 @@
-name: Desktop VPS with Tailscale Input & Steam
+name: Windows RDP (Ngrok)
 
 on:
   workflow_dispatch:
     inputs:
-      tailscale_authkey:
-        description: 'Masukkan Tailscale Auth Key (tskey-auth-...)'
-        required: true
-        type: string
-      tailscale_hostname:
-        description: 'Nama host Tailscale (opsional)'
+      rdp_password:
+        description: "Password untuk user runneradmin"
         required: false
-        default: 'gh-desktop-vps'
-        type: string
-      session_minutes:
-        description: 'Durasi sesi aktif dalam menit (maks 330)'
-        required: false
-        default: '60'
-        type: string
-
-permissions:
-  contents: read
+        default: "P@ssw0rd!2026"
 
 jobs:
-  desktop-vps:
-    runs-on: ubuntu-24.04
+  rdp-session:
+    runs-on: windows-latest
     timeout-minutes: 360
-
     steps:
-      - name: Install XFCE Desktop & XRDP
+      - name: Enable RDP and Set Password
+        shell: pwsh
+        env:
+          RDP_PASS: ${{ secrets.RDP_PASSWORD || inputs.rdp_password }}
         run: |
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            xfce4 xfce4-goodies xrdp dbus-x11 wget curl ca-certificates gnupg software-properties-common
-          echo "startxfce4" > ~/.xsession
-          sudo systemctl enable xrdp || true
-          sudo service xrdp restart || true
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          net user runneradmin "$env:RDP_PASS" /active:yes
 
-      - name: Install Tailscale
+      - name: Install and Start Ngrok TCP Tunnel
+        shell: pwsh
+        env:
+          NGROK_TOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
         run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          sudo systemctl enable tailscaled || true
-          sudo service tailscaled start || true
-
-      - name: Connect to Tailscale from Input
-        run: |
-          AUTHKEY="${{ inputs.tailscale_authkey }}"
-          HOSTNAME_ARG="${{ inputs.tailscale_hostname }}"
-
-          if [ -z "$AUTHKEY" ]; then
-            echo "ERROR: tailscale_authkey wajib diisi saat Run workflow."
-            exit 1
-          fi
-
-          if [ -z "$HOSTNAME_ARG" ]; then
-            HOSTNAME_ARG="gh-desktop-vps"
-          fi
-
-          sudo tailscale up --authkey="$AUTHKEY" --hostname="$HOSTNAME_ARG" --ssh
-          tailscale status
-          tailscale ip -4
-
-      - name: Download Steam & Place Shortcut on Desktop
-        run: |
-          mkdir -p ~/Desktop ~/Downloads
-          STEAM_DEB="$HOME/Downloads/steam_latest.deb"
-          wget -q --show-progress -O "$STEAM_DEB" "https://cdn.cloudflare.steamstatic.com/client/installer/steam.deb"
-
-          cat << 'EOF' > ~/Desktop/Steam.desktop
-          [Desktop Entry]
-          Version=1.0
-          Name=Steam
-          Comment=Application for browsing and playing games on Steam
-          Exec=/usr/games/steam %U
-          Icon=steam
-          Terminal=false
-          Type=Application
-          Categories=Game;Network;
-          StartupNotify=true
-          EOF
-
-          chmod +x ~/Desktop/Steam.desktop
-
-          sudo dpkg --add-architecture i386 || true
-          sudo apt-get update || true
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -f -y "$STEAM_DEB" || true
-
-          ls -la ~/Desktop
+          winget install -e --id Ngrok.Ngrok --accept-source-agreements --accept-package-agreements
+          $ngrokExe = "C:\Program Files\WinGet\Packages\Ngrok.Ngrok*\ngrok.exe"
+          $resolved = (Get-ChildItem -Path $ngrokExe | Select-Object -First 1).FullName
+          & "$resolved" config add-authtoken "$env:NGROK_TOKEN"
+          Start-Process -FilePath "$resolved" -ArgumentList "tcp 3389" -WindowStyle Hidden
+          Start-Sleep -Seconds 5
+          Write-Host "RDP siap. Cek endpoint TCP aktif di Dashboard Ngrok (Cloud Edge -> Endpoints)."
 
       - name: Keep Session Alive
+        shell: pwsh
         run: |
-          MINUTES="${{ inputs.session_minutes }}"
-          if ! [[ "$MINUTES" =~ ^[0-9]+$ ]]; then
-            MINUTES=60
-          fi
-          if [ "$MINUTES" -gt 330 ]; then
-            MINUTES=330
-          fi
-          echo "VPS aktif selama $MINUTES menit. Cek IP Tailscale di log langkah 'Connect to Tailscale from Input'."
-          sleep "$((MINUTES * 60))"
+          Start-Sleep -Seconds 21000

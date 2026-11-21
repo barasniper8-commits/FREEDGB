@@ -1,4 +1,4 @@
-name: Windows RDP (Ngrok)
+name: Windows RDP (Bore)
 
 on:
   workflow_dispatch:
@@ -22,32 +22,25 @@ jobs:
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           net user runneradmin "$env:RDP_PASS" /active:yes
 
-      - name: Install and Start Ngrok TCP Tunnel
+      - name: Install and Start Bore TCP Tunnel
         shell: pwsh
-        env:
-          NGROK_TOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
         run: |
-          $ngrokDir = "C:\ngrok"
-          New-Item -ItemType Directory -Path $ngrokDir -Force | Out-Null
-          Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "$ngrokDir\ngrok.zip"
-          Expand-Archive -Path "$ngrokDir\ngrok.zip" -DestinationPath $ngrokDir -Force
-          & "$ngrokDir\ngrok.exe" config add-authtoken "$env:NGROK_TOKEN"
-          Start-Process -FilePath "$ngrokDir\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout" -RedirectStandardOutput "$ngrokDir\ngrok.log" -RedirectStandardError "$ngrokDir\ngrok-err.log" -WindowStyle Hidden
-          Start-Sleep -Seconds 6
+          $boreDir = "C:\bore"
+          New-Item -ItemType Directory -Path $boreDir -Force | Out-Null
 
-          Write-Host "=== NGROK LOG ==="
-          if (Test-Path "$ngrokDir\ngrok.log") { Get-Content "$ngrokDir\ngrok.log" -Tail 30 }
+          # Ambil versi rilis terbaru dari GitHub bore (ekzhang/bore)
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ekzhang/bore/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -like "*x86_64-pc-windows-msvc.zip" } | Select-Object -First 1
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$boreDir\bore.zip"
+          Expand-Archive -Path "$boreDir\bore.zip" -DestinationPath $boreDir -Force
 
-          Write-Host "=== NGROK ERR LOG ==="
-          if (Test-Path "$ngrokDir\ngrok-err.log") { Get-Content "$ngrokDir\ngrok-err.log" -Tail 30 }
+          # Jalankan bore local 3389 --to bore.pub di background dan simpan log-nya
+          Start-Process -FilePath "$boreDir\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "$boreDir\bore.log" -RedirectStandardError "$boreDir\bore-err.log" -WindowStyle Hidden
+          Start-Sleep -Seconds 5
 
-          Write-Host "=== NGROK LOCAL API TUNNELS ==="
-          try {
-            $tunnels = Invoke-RestMethod -Uri "http://127.0.0.1:4040/api/tunnels" -TimeoutSec 5
-            $tunnels.tunnels | ForEach-Object { Write-Host "Public URL: $($_.public_url) -> $($_.config.addr)" }
-          } catch {
-            Write-Host "Gagal membaca API lokal Ngrok: $($_.Exception.Message)"
-          }
+          Write-Host "=== BORE TUNNEL INFO ==="
+          if (Test-Path "$boreDir\bore.log") { Get-Content "$boreDir\bore.log" }
+          if (Test-Path "$boreDir\bore-err.log") { Get-Content "$boreDir\bore-err.log" }
 
       - name: Keep Session Alive
         shell: pwsh

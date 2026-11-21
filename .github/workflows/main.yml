@@ -1,4 +1,4 @@
-name: Windows RDP (Bore)
+name: Windows RDP (Pinggy)
 
 on:
   workflow_dispatch:
@@ -22,25 +22,19 @@ jobs:
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           net user runneradmin "$env:RDP_PASS" /active:yes
 
-      - name: Install and Start Bore TCP Tunnel
+      - name: Start Pinggy TCP Tunnel
         shell: pwsh
         run: |
-          $boreDir = "C:\bore"
-          New-Item -ItemType Directory -Path $boreDir -Force | Out-Null
+          $pinggyLog = "C:\pinggy.log"
+          $pinggyErr = "C:\pinggy-err.log"
+          $sshArgs = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 443 -R0:localhost:3389 tcp@free.pinggy.io"
 
-          # Ambil versi rilis terbaru dari GitHub bore (ekzhang/bore)
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ekzhang/bore/releases/latest"
-          $asset = $release.assets | Where-Object { $_.name -like "*x86_64-pc-windows-msvc.zip" } | Select-Object -First 1
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$boreDir\bore.zip"
-          Expand-Archive -Path "$boreDir\bore.zip" -DestinationPath $boreDir -Force
+          Start-Process -FilePath "ssh.exe" -ArgumentList $sshArgs -RedirectStandardOutput $pinggyLog -RedirectStandardError $pinggyErr -WindowStyle Hidden
+          Start-Sleep -Seconds 7
 
-          # Jalankan bore local 3389 --to bore.pub di background dan simpan log-nya
-          Start-Process -FilePath "$boreDir\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "$boreDir\bore.log" -RedirectStandardError "$boreDir\bore-err.log" -WindowStyle Hidden
-          Start-Sleep -Seconds 5
-
-          Write-Host "=== BORE TUNNEL INFO ==="
-          if (Test-Path "$boreDir\bore.log") { Get-Content "$boreDir\bore.log" }
-          if (Test-Path "$boreDir\bore-err.log") { Get-Content "$boreDir\bore-err.log" }
+          Write-Host "=== PINGGY OUTPUT ==="
+          if (Test-Path $pinggyLog) { Get-Content $pinggyLog }
+          if (Test-Path $pinggyErr) { Get-Content $pinggyErr }
 
       - name: Keep Session Alive
         shell: pwsh
